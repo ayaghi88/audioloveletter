@@ -42,20 +42,24 @@ Deno.serve(async (req) => {
     if (dbError) throw new Error(`DB insert failed: ${dbError.message}`);
 
     // Download file from storage (streamed)
+    console.log(`clone-voice: downloading sample from voice-samples bucket, path="${storagePath}"`);
     const { data: fileData, error: dlError } = await supabase.storage
       .from("voice-samples")
       .download(storagePath);
     if (dlError || !fileData) {
+      console.error(`clone-voice: voice-samples download failed for path="${storagePath}":`, dlError?.message);
       await supabase.from("voice_clones").update({ status: "failed" }).eq("id", cloneRecord.id);
       throw new Error(`Storage download failed: ${dlError?.message}`);
     }
+    console.log(`clone-voice: successfully downloaded sample from voice-samples, path="${storagePath}"`);
 
     // Send to ElevenLabs for cloning
     const elFormData = new FormData();
-    elFormData.append("name", `voxpress_${finalUserId.slice(0, 8)}_${finalName}`);
+    elFormData.append("name", `audioloveletter_${finalUserId.slice(0, 8)}_${finalName}`);
     elFormData.append("files", fileData, "sample.webm");
-    elFormData.append("description", `VoxPress voice clone for ${finalName}`);
+    elFormData.append("description", `Audio Love Letter voice clone for ${finalName}`);
 
+    console.log(`clone-voice: sending voice sample to ElevenLabs API for userId="${finalUserId}", name="${finalName}"`);
     const elResponse = await fetch("https://api.elevenlabs.io/v1/voices/add", {
       method: "POST",
       headers: { "xi-api-key": ELEVENLABS_API_KEY },
@@ -64,11 +68,13 @@ Deno.serve(async (req) => {
 
     if (!elResponse.ok) {
       const errBody = await elResponse.text();
+      console.error(`clone-voice: ElevenLabs API error [${elResponse.status}]:`, errBody);
       await supabase.from("voice_clones").update({ status: "failed" }).eq("id", cloneRecord.id);
       throw new Error(`ElevenLabs clone failed [${elResponse.status}]: ${errBody}`);
     }
 
     const elData = await elResponse.json();
+    console.log(`clone-voice: ElevenLabs voice created successfully, voice_id="${elData.voice_id}"`);
 
     await supabase.from("voice_clones").update({
       elevenlabs_voice_id: elData.voice_id,

@@ -36,6 +36,7 @@ Deno.serve(async (req) => {
       .single();
     if (convError || !conversion?.audio_storage_path) throw new Error("Audio not found");
 
+    console.log(`get-audiobook-audio: fetching audio from audiobooks bucket, path="${conversion.audio_storage_path}", conversionId="${conversionId}"`);
     const { data: audioData, error: dlError } = await supabase.storage
       .from("audiobooks")
       .download(conversion.audio_storage_path);
@@ -43,6 +44,7 @@ Deno.serve(async (req) => {
       console.error("get-audiobook-audio storage download error:", dlError?.message, "path:", conversion.audio_storage_path);
       throw new Error(`Download failed: ${dlError?.message ?? "no data returned"}`);
     }
+    console.log(`get-audiobook-audio: successfully fetched audio from audiobooks bucket, path="${conversion.audio_storage_path}"`);
 
     return new Response(audioData, {
       headers: {
