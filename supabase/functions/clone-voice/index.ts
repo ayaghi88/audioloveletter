@@ -55,9 +55,9 @@ Deno.serve(async (req) => {
 
     // Send to ElevenLabs for cloning
     const elFormData = new FormData();
-    elFormData.append("name", `voxpress_${finalUserId.slice(0, 8)}_${finalName}`);
+    elFormData.append("name", `audioloveletter_${finalUserId.slice(0, 8)}_${finalName}`);
     elFormData.append("files", fileData, "sample.webm");
-    elFormData.append("description", `VoxPress voice clone for ${finalName}`);
+    elFormData.append("description", `Audio Love Letter voice clone for ${finalName}`);
 
     console.log(`clone-voice: sending voice sample to ElevenLabs API for userId="${finalUserId}", name="${finalName}"`);
     const elResponse = await fetch("https://api.elevenlabs.io/v1/voices/add", {

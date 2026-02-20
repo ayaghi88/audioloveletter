@@ -13,7 +13,7 @@ export function Header() {
           <Headphones className="w-6 h-6 text-primary" />
         </div>
         <span className="text-xl font-bold text-foreground tracking-tight">
-          Vox<span className="text-primary">Press</span>
+          Audio <span className="text-primary">Love Letter</span>
         </span>
       </div>
       <p className="text-sm text-muted-foreground hidden sm:block">
