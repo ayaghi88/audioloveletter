@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    let userId = "anonymous-test-user";
+    let userId = "00000000-0000-0000-0000-000000000000";
     if (authHeader) {
       const userClient = createClient(
         Deno.env.get("SUPABASE_URL")!,
