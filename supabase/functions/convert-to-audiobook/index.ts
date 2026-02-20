@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
+import { unzipSync } from "https://esm.sh/fflate@0.8.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,7 +7,53 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Simple chapter splitter: split on double newlines or "Chapter X" patterns
+// Extract plain text from .docx XML content
+function extractTextFromDocxXml(xml: string): string {
+  // Remove XML tags except paragraph breaks
+  // <w:p> = paragraph, <w:t> = text run
+  const paragraphs: string[] = [];
+  const pMatches = xml.match(/<w:p[\s>][\s\S]*?<\/w:p>/g) || [];
+  for (const p of pMatches) {
+    const texts: string[] = [];
+    const tMatches = p.match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) || [];
+    for (const t of tMatches) {
+      const content = t.replace(/<[^>]+>/g, "");
+      texts.push(content);
+    }
+    if (texts.length > 0) {
+      paragraphs.push(texts.join(""));
+    }
+  }
+  return paragraphs.join("\n\n");
+}
+
+// Extract text from uploaded document based on file type
+async function extractTextFromDocument(fileData: Blob, filename: string): Promise<string> {
+  const ext = filename.toLowerCase().split(".").pop() || "";
+
+  if (ext === "txt") {
+    return await fileData.text();
+  }
+
+  if (ext === "docx") {
+    const buffer = new Uint8Array(await fileData.arrayBuffer());
+    const unzipped = unzipSync(buffer);
+    const docXmlBytes = unzipped["word/document.xml"];
+    if (!docXmlBytes) throw new Error("Invalid .docx file: missing word/document.xml");
+    const decoder = new TextDecoder();
+    const xml = decoder.decode(docXmlBytes);
+    return extractTextFromDocxXml(xml);
+  }
+
+  // For PDF/EPUB, fall back to raw text extraction (limited)
+  if (ext === "pdf" || ext === "epub") {
+    throw new Error(`${ext.toUpperCase()} files are not yet supported. Please upload a .docx or .txt file.`);
+  }
+
+  throw new Error(`Unsupported file type: .${ext}`);
+}
+
+// Simple chapter splitter
 function splitIntoChapters(text: string): Array<{ title: string; content: string }> {
   const chapterPattern = /(?:^|\n)(Chapter\s+\d+[^\n]*|CHAPTER\s+\d+[^\n]*)/gi;
   const matches = [...text.matchAll(chapterPattern)];
@@ -67,8 +113,8 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) throw new Error("Unauthorized");
 
-    const { text, voiceCloneId, filename, speed } = await req.json();
-    if (!text || !voiceCloneId) throw new Error("Missing text or voiceCloneId");
+    const { documentPath, voiceCloneId, filename, speed } = await req.json();
+    if (!documentPath || !voiceCloneId) throw new Error("Missing documentPath or voiceCloneId");
 
     // Get the voice clone
     const { data: voice, error: voiceError } = await supabase
@@ -80,6 +126,16 @@ Deno.serve(async (req) => {
     if (voiceError || !voice) throw new Error("Voice clone not found");
     if (!voice.elevenlabs_voice_id) throw new Error("Voice clone not ready");
 
+    // Download document from storage
+    const { data: fileData, error: dlError } = await supabase.storage
+      .from("audiobooks")
+      .download(documentPath);
+    if (dlError || !fileData) throw new Error(`Document download failed: ${dlError?.message}`);
+
+    // Extract text from document
+    const text = await extractTextFromDocument(fileData, filename || documentPath);
+    if (!text.trim()) throw new Error("No text could be extracted from the document");
+
     // Create conversion record
     const { data: conversion, error: convError } = await supabase
       .from("conversions")
@@ -87,6 +143,7 @@ Deno.serve(async (req) => {
         user_id: user.id,
         voice_clone_id: voiceCloneId,
         original_filename: filename || "document.txt",
+        document_storage_path: documentPath,
         status: "parsing",
         progress: 10,
       })
@@ -119,7 +176,6 @@ Deno.serve(async (req) => {
     for (let i = 0; i < chapters.length; i++) {
       const chapter = chapters[i];
 
-      // Update progress
       const progress = 20 + Math.round(((i + 1) / chapters.length) * 60);
       await supabase.from("conversions").update({
         progress,
@@ -166,7 +222,7 @@ Deno.serve(async (req) => {
       const audioBytes = new Uint8Array(audioBuffer);
       audioChunks.push(audioBytes);
 
-      // Estimate duration: ~128kbps MP3 → bytes / (128000/8) = seconds
+      // Estimate duration: ~128kbps MP3
       const estimatedDuration = audioBuffer.byteLength / 16000;
       chapterMeta.push({
         title: chapter.title,
