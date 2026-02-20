@@ -14,7 +14,89 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      conversions: {
+        Row: {
+          audio_storage_path: string | null
+          chapters: Json | null
+          created_at: string
+          document_storage_path: string | null
+          id: string
+          original_filename: string
+          progress: number
+          status: string
+          total_duration_seconds: number | null
+          updated_at: string
+          user_id: string
+          voice_clone_id: string | null
+        }
+        Insert: {
+          audio_storage_path?: string | null
+          chapters?: Json | null
+          created_at?: string
+          document_storage_path?: string | null
+          id?: string
+          original_filename: string
+          progress?: number
+          status?: string
+          total_duration_seconds?: number | null
+          updated_at?: string
+          user_id: string
+          voice_clone_id?: string | null
+        }
+        Update: {
+          audio_storage_path?: string | null
+          chapters?: Json | null
+          created_at?: string
+          document_storage_path?: string | null
+          id?: string
+          original_filename?: string
+          progress?: number
+          status?: string
+          total_duration_seconds?: number | null
+          updated_at?: string
+          user_id?: string
+          voice_clone_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversions_voice_clone_id_fkey"
+            columns: ["voice_clone_id"]
+            isOneToOne: false
+            referencedRelation: "voice_clones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_clones: {
+        Row: {
+          created_at: string
+          elevenlabs_voice_id: string | null
+          id: string
+          name: string
+          sample_storage_path: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          elevenlabs_voice_id?: string | null
+          id?: string
+          name: string
+          sample_storage_path?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          elevenlabs_voice_id?: string | null
+          id?: string
+          name?: string
+          sample_storage_path?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

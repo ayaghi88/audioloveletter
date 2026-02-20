@@ -1,1 +1,13 @@
 project_id = "ymgagjstnxoubjjhhchd"
+
+[functions.clone-voice]
+verify_jwt = false
+
+[functions.convert-to-audiobook]
+verify_jwt = false
+
+[functions.export-kdp-json]
+verify_jwt = false
+
+[functions.get-audiobook-audio]
+verify_jwt = false
