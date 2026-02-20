@@ -66,22 +66,24 @@ export function VoiceCloneUpload({ onCloneReady, existingCloneId }: VoiceCloneUp
     setError(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Please sign in first");
-
       setState("processing");
 
       const formData = new FormData();
       formData.append("audio", blob, filename);
       formData.append("name", "My Voice");
 
+      // Try to get session for auth, but allow unauthenticated for testing
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {};
+      if (session) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clone-voice`,
         {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
+          headers,
           body: formData,
         }
       );
