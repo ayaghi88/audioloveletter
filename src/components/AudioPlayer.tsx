@@ -6,14 +6,16 @@ import { Button } from "@/components/ui/button";
 interface AudioPlayerProps {
   title: string;
   duration: string;
+  audioUrl?: string;
   onDownload: () => void;
   onReset: () => void;
 }
 
-export function AudioPlayer({ title, duration, onDownload, onReset }: AudioPlayerProps) {
+export function AudioPlayer({ title, duration, audioUrl, onDownload, onReset }: AudioPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const totalSeconds = 185; // mock
+  const [totalSeconds, setTotalSeconds] = useState(185);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
@@ -21,8 +23,41 @@ export function AudioPlayer({ title, duration, onDownload, onReset }: AudioPlaye
     return `${m}:${sec.toString().padStart(2, "0")}`;
   };
 
+  // Set up real audio element when URL is provided
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!audioUrl) return;
+
+    const audio = new Audio(audioUrl);
+    audioRef.current = audio;
+
+    const onLoaded = () => {
+      if (isFinite(audio.duration) && audio.duration > 0) {
+        setTotalSeconds(audio.duration);
+      }
+    };
+    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const onEnded = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+    };
+
+    audio.addEventListener("loadedmetadata", onLoaded);
+    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("ended", onEnded);
+
+    return () => {
+      audio.removeEventListener("loadedmetadata", onLoaded);
+      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("ended", onEnded);
+      audio.pause();
+      audio.src = "";
+      audioRef.current = null;
+    };
+  }, [audioUrl]);
+
+  // Mock progress animation when no real audio URL
+  useEffect(() => {
+    if (audioUrl || !isPlaying) return;
     const interval = setInterval(() => {
       setCurrentTime((t) => {
         if (t >= totalSeconds) {
@@ -33,7 +68,37 @@ export function AudioPlayer({ title, duration, onDownload, onReset }: AudioPlaye
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [isPlaying]);
+  }, [isPlaying, audioUrl, totalSeconds]);
+
+  const togglePlay = () => {
+    const audio = audioRef.current;
+    if (audio) {
+      if (isPlaying) {
+        audio.pause();
+      } else {
+        audio.play().catch((err) => console.error("Audio playback error:", err));
+      }
+    }
+    setIsPlaying((p) => !p);
+  };
+
+  const seekBack = () => {
+    const newTime = Math.max(0, currentTime - 15);
+    if (audioRef.current) {
+      audioRef.current.currentTime = newTime;
+    } else {
+      setCurrentTime(newTime);
+    }
+  };
+
+  const seekForward = () => {
+    const newTime = Math.min(totalSeconds, currentTime + 15);
+    if (audioRef.current) {
+      audioRef.current.currentTime = newTime;
+    } else {
+      setCurrentTime(newTime);
+    }
+  };
 
   const progress = (currentTime / totalSeconds) * 100;
 
@@ -79,19 +144,19 @@ export function AudioPlayer({ title, duration, onDownload, onReset }: AudioPlaye
       {/* Controls */}
       <div className="flex items-center justify-center gap-4">
         <button
-          onClick={() => setCurrentTime(Math.max(0, currentTime - 15))}
+          onClick={seekBack}
           className="p-2 rounded-lg text-muted-foreground hover:text-foreground transition-colors"
         >
           <SkipBack className="w-5 h-5" />
         </button>
         <button
-          onClick={() => setIsPlaying(!isPlaying)}
+          onClick={togglePlay}
           className="p-4 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all glow-amber-strong"
         >
           {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-0.5" />}
         </button>
         <button
-          onClick={() => setCurrentTime(Math.min(totalSeconds, currentTime + 15))}
+          onClick={seekForward}
           className="p-2 rounded-lg text-muted-foreground hover:text-foreground transition-colors"
         >
           <SkipForward className="w-5 h-5" />
@@ -106,7 +171,7 @@ export function AudioPlayer({ title, duration, onDownload, onReset }: AudioPlaye
           onClick={onDownload}
         >
           <Download className="w-4 h-4" />
-          Download for KDP
+          Download Audio
         </Button>
         <Button
           variant="outline"
