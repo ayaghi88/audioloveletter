@@ -80,36 +80,23 @@ const Index = () => {
     setStage(STAGES[0]);
 
     try {
-      // Read file text
-      const text = await file.text();
-
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
 
-      // Start polling progress
-      const pollInterval = setInterval(async () => {
-        // We poll the conversion record for progress updates
-        if (conversionId) {
-          const { data } = await supabase
-            .from("conversions")
-            .select("progress, status")
-            .eq("id", conversionId)
-            .single();
-          if (data) {
-            setProgress(data.progress);
-            const stageIdx = Math.min(
-              Math.floor((data.progress / 100) * STAGES.length),
-              STAGES.length - 1
-            );
-            setStage(STAGES[stageIdx]);
-          }
-        }
-      }, 2000);
+      // Upload document to storage first
+      const docPath = `${session.user.id}/${crypto.randomUUID()}_${file.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from("audiobooks")
+        .upload(docPath, file, { contentType: file.type || "application/octet-stream" });
+      if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
+
+      setProgress(10);
+      setStage(STAGES[0]);
 
       // Simulate initial progress while waiting
       const fakeProgress = setInterval(() => {
         setProgress((p) => {
-          if (p >= 15) {
+          if (p >= 20) {
             clearInterval(fakeProgress);
             return p;
           }
@@ -126,7 +113,7 @@ const Index = () => {
             Authorization: `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
-            text,
+            documentPath: docPath,
             voiceCloneId,
             filename: file.name,
             speed,
@@ -134,7 +121,6 @@ const Index = () => {
         }
       );
 
-      clearInterval(pollInterval);
       clearInterval(fakeProgress);
 
       const data = await response.json();
