@@ -38,6 +38,8 @@ const Index = () => {
       if (session) {
         setState("upload");
         loadExistingVoice();
+      } else {
+        setState("auth");
       }
     });
 
