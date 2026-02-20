@@ -152,7 +152,16 @@ const Index = () => {
           headers: { Authorization: `Bearer ${session.access_token}` },
         }
       );
-      if (!response.ok) throw new Error("Download failed");
+      if (!response.ok) {
+        let errMsg = "Download failed";
+        try {
+          const errData = await response.json();
+          errMsg = errData.error || errMsg;
+        } catch {
+          // ignore parse errors
+        }
+        throw new Error(errMsg);
+      }
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
