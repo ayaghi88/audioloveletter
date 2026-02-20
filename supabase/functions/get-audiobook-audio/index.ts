@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader } } }
     );
 
@@ -39,7 +39,10 @@ Deno.serve(async (req) => {
     const { data: audioData, error: dlError } = await supabase.storage
       .from("audiobooks")
       .download(conversion.audio_storage_path);
-    if (dlError || !audioData) throw new Error("Download failed");
+    if (dlError || !audioData) {
+      console.error("get-audiobook-audio storage download error:", dlError?.message, "path:", conversion.audio_storage_path);
+      throw new Error(`Download failed: ${dlError?.message ?? "no data returned"}`);
+    }
 
     return new Response(audioData, {
       headers: {
