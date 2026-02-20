@@ -58,6 +58,21 @@ export function VoiceCloneUpload({ onCloneReady, existingCloneId }: VoiceCloneUp
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Reject video files
+    if (file.type.startsWith("video/")) {
+      setError("Please upload an audio file (MP3, WAV, M4A, etc.), not a video. You can convert your video to audio first.");
+      setState("error");
+      return;
+    }
+
+    // Max 25MB
+    if (file.size > 25 * 1024 * 1024) {
+      setError("File is too large. Please upload an audio file under 25MB.");
+      setState("error");
+      return;
+    }
+
     await uploadAndClone(file, file.name);
   }, []);
 
@@ -136,7 +151,7 @@ export function VoiceCloneUpload({ onCloneReady, existingCloneId }: VoiceCloneUp
             className="space-y-3"
           >
             <p className="text-sm text-muted-foreground">
-              Record 2–5 minutes of yourself reading, or upload an audio file. We'll clone your voice for narration.
+              Record 2–5 minutes of yourself reading, or upload an audio file (MP3, WAV, M4A). Video files are not supported.
             </p>
             <div className="flex gap-3">
               <Button variant="hero" onClick={startRecording} className="flex-1">
@@ -152,7 +167,7 @@ export function VoiceCloneUpload({ onCloneReady, existingCloneId }: VoiceCloneUp
                 </Button>
                 <input
                   type="file"
-                  accept="audio/*"
+                  accept=".mp3,.wav,.m4a,.ogg,.flac,.aac,.webm,audio/*"
                   onChange={handleFileUpload}
                   className="sr-only"
                 />
