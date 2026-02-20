@@ -15,43 +15,25 @@ Deno.serve(async (req) => {
     const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
     if (!ELEVENLABS_API_KEY) throw new Error("ELEVENLABS_API_KEY not configured");
 
-    const authHeader = req.headers.get("Authorization");
-
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    let userId = "00000000-0000-0000-0000-000000000000";
-    if (authHeader) {
-      const userClient = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!,
-        { global: { headers: { Authorization: authHeader } } }
-      );
-      const { data: { user } } = await userClient.auth.getUser();
-      if (user) userId = user.id;
-    }
+    // Accept JSON body with storage path instead of the actual file
+    const { storagePath, voiceName, userId } = await req.json();
 
-    const formData = await req.formData();
-    const audioFile = formData.get("audio") as File;
-    const voiceName = formData.get("name") as string || "My Voice";
+    if (!storagePath) throw new Error("No storagePath provided");
 
-    if (!audioFile) throw new Error("No audio file provided");
-
-    // Upload sample to storage
-    const storagePath = `${userId}/${crypto.randomUUID()}.${audioFile.name.split('.').pop()}`;
-    const { error: uploadError } = await supabase.storage
-      .from("voice-samples")
-      .upload(storagePath, audioFile);
-    if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
+    const finalUserId = userId || "00000000-0000-0000-0000-000000000000";
+    const finalName = voiceName || "My Voice";
 
     // Create voice clone record
     const { data: cloneRecord, error: dbError } = await supabase
       .from("voice_clones")
       .insert({
-        user_id: userId,
-        name: voiceName,
+        user_id: finalUserId,
+        name: finalName,
         sample_storage_path: storagePath,
         status: "processing",
       })
@@ -59,11 +41,20 @@ Deno.serve(async (req) => {
       .single();
     if (dbError) throw new Error(`DB insert failed: ${dbError.message}`);
 
+    // Download file from storage (streamed)
+    const { data: fileData, error: dlError } = await supabase.storage
+      .from("voice-samples")
+      .download(storagePath);
+    if (dlError || !fileData) {
+      await supabase.from("voice_clones").update({ status: "failed" }).eq("id", cloneRecord.id);
+      throw new Error(`Storage download failed: ${dlError?.message}`);
+    }
+
     // Send to ElevenLabs for cloning
     const elFormData = new FormData();
-    elFormData.append("name", `voxpress_${userId.slice(0, 8)}_${voiceName}`);
-    elFormData.append("files", audioFile);
-    elFormData.append("description", `VoxPress voice clone for ${voiceName}`);
+    elFormData.append("name", `voxpress_${finalUserId.slice(0, 8)}_${finalName}`);
+    elFormData.append("files", fileData, "sample.webm");
+    elFormData.append("description", `VoxPress voice clone for ${finalName}`);
 
     const elResponse = await fetch("https://api.elevenlabs.io/v1/voices/add", {
       method: "POST",
@@ -79,7 +70,6 @@ Deno.serve(async (req) => {
 
     const elData = await elResponse.json();
 
-    // Update record with ElevenLabs voice ID
     await supabase.from("voice_clones").update({
       elevenlabs_voice_id: elData.voice_id,
       status: "ready",
