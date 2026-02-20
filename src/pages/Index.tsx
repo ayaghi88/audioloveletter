@@ -22,7 +22,7 @@ const STAGES = [
 ];
 
 const Index = () => {
-  const [state, setState] = useState<AppState>("auth");
+  const [state, setState] = useState<AppState>("upload");
   const [file, setFile] = useState<File | null>(null);
   const [voiceCloneId, setVoiceCloneId] = useState<string | null>(null);
   const [speed, setSpeed] = useState(1.0);
