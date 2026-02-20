@@ -21,6 +21,8 @@ const STAGES = [
   "Finalizing KDP format...",
 ];
 
+const AUDIO_URL_EXPIRY_SECONDS = 3600; // 1 hour
+
 const Index = () => {
   const [state, setState] = useState<AppState>("upload");
   const [file, setFile] = useState<File | null>(null);
@@ -30,6 +32,7 @@ const Index = () => {
   const [stage, setStage] = useState(STAGES[0]);
   const [conversionId, setConversionId] = useState<string | null>(null);
   const [conversionResult, setConversionResult] = useState<any>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const { toast } = useToast();
 
   // Check auth on mount
@@ -128,6 +131,15 @@ const Index = () => {
 
       setConversionId(data.id);
       setConversionResult(data);
+
+      // Get a signed URL so the AudioPlayer can stream the result
+      if (data.audioPath) {
+        const { data: signedData } = await supabase.storage
+          .from("audiobooks")
+          .createSignedUrl(data.audioPath, AUDIO_URL_EXPIRY_SECONDS);
+        if (signedData?.signedUrl) setAudioUrl(signedData.signedUrl);
+      }
+
       setProgress(100);
       setTimeout(() => setState("done"), 500);
     } catch (err: any) {
@@ -213,6 +225,7 @@ const Index = () => {
     setFile(null);
     setConversionId(null);
     setConversionResult(null);
+    setAudioUrl(null);
     setProgress(0);
     setState("upload");
   };
@@ -416,6 +429,7 @@ const Index = () => {
               <AudioPlayer
                 title={file?.name.replace(/\.[^/.]+$/, "") ?? "Audiobook"}
                 duration={totalDuration}
+                audioUrl={audioUrl ?? undefined}
                 onDownload={handleDownloadAudio}
                 onReset={handleReset}
               />
