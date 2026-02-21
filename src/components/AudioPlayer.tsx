@@ -130,8 +130,49 @@ export function AudioPlayer({ title, duration, conversionId, onDownload, onReset
         </p>
       </div>
 
-      {/* Waveform visualization */}
-      <div className="flex items-center justify-center gap-[2px] h-20">
+      {/* Waveform visualization — clickable to seek */}
+      <div
+        className="flex items-center justify-center gap-[2px] h-20 cursor-pointer"
+        onClick={(e) => {
+          if (!audioRef.current || !audioLoaded) return;
+          const rect = e.currentTarget.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const pct = x / rect.width;
+          audioRef.current.currentTime = pct * audioRef.current.duration;
+        }}
+        onMouseDown={(e) => {
+          if (!audioRef.current || !audioLoaded) return;
+          const container = e.currentTarget;
+          const onMove = (ev: MouseEvent) => {
+            const rect = container.getBoundingClientRect();
+            const x = Math.max(0, Math.min(ev.clientX - rect.left, rect.width));
+            const pct = x / rect.width;
+            audioRef.current!.currentTime = pct * audioRef.current!.duration;
+          };
+          const onUp = () => {
+            window.removeEventListener("mousemove", onMove);
+            window.removeEventListener("mouseup", onUp);
+          };
+          window.addEventListener("mousemove", onMove);
+          window.addEventListener("mouseup", onUp);
+        }}
+        onTouchStart={(e) => {
+          if (!audioRef.current || !audioLoaded) return;
+          const container = e.currentTarget;
+          const onMove = (ev: TouchEvent) => {
+            const rect = container.getBoundingClientRect();
+            const x = Math.max(0, Math.min(ev.touches[0].clientX - rect.left, rect.width));
+            const pct = x / rect.width;
+            audioRef.current!.currentTime = pct * audioRef.current!.duration;
+          };
+          const onEnd = () => {
+            window.removeEventListener("touchmove", onMove);
+            window.removeEventListener("touchend", onEnd);
+          };
+          window.addEventListener("touchmove", onMove);
+          window.addEventListener("touchend", onEnd);
+        }}
+      >
         {Array.from({ length: 60 }).map((_, i) => {
           const barProgress = (i / 60) * 100;
           const isPast = barProgress <= progress;
