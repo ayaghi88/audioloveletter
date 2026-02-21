@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { unzipSync } from "https://esm.sh/fflate@0.8.2";
-import { getDocument } from "https://esm.sh/pdfjs-serverless@0.6.0";
+import { extractText } from "npm:unpdf";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,13 +48,7 @@ async function extractTextFromDocument(fileData: Blob, filename: string): Promis
 
   if (ext === "pdf") {
     const buffer = new Uint8Array(await fileData.arrayBuffer());
-    const doc = await getDocument(buffer).promise;
-    let text = "";
-    for (let i = 1; i <= doc.numPages; i++) {
-      const page = await doc.getPage(i);
-      const content = await page.getTextContent();
-      text += content.items.map((item: any) => item.str).join(" ") + "\n\n";
-    }
+    const { text } = await extractText(buffer);
     return text;
   }
 
