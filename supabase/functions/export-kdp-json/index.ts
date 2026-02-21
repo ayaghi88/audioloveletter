@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader } } }
     );
 
@@ -97,9 +97,9 @@ Deno.serve(async (req) => {
         "Content-Disposition": `attachment; filename="${(title || "audiobook")}-kdp-metadata.json"`,
       },
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("export-kdp-json error:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
