@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { unzipSync } from "https://esm.sh/fflate@0.8.2";
+import { getDocument } from "https://esm.sh/pdfjs-serverless@0.6.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,9 +46,20 @@ async function extractTextFromDocument(fileData: Blob, filename: string): Promis
     return extractTextFromDocxXml(xml);
   }
 
-  // For PDF/EPUB, fall back to raw text extraction (limited)
-  if (ext === "pdf" || ext === "epub") {
-    throw new Error(`${ext.toUpperCase()} files are not yet supported. Please upload a .docx or .txt file.`);
+  if (ext === "pdf") {
+    const buffer = new Uint8Array(await fileData.arrayBuffer());
+    const doc = await getDocument(buffer).promise;
+    let text = "";
+    for (let i = 1; i <= doc.numPages; i++) {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map((item: any) => item.str).join(" ") + "\n\n";
+    }
+    return text;
+  }
+
+  if (ext === "epub") {
+    throw new Error("EPUB files are not yet supported. Please upload a .pdf, .docx, or .txt file.");
   }
 
   throw new Error(`Unsupported file type: .${ext}`);
@@ -265,9 +277,9 @@ Deno.serve(async (req) => {
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("convert-to-audiobook error:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
