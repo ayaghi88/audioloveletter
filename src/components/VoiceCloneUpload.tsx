@@ -81,9 +81,12 @@ export function VoiceCloneUpload({ onCloneReady, existingCloneId }: VoiceCloneUp
     setError(null);
 
     try {
-      // Upload file directly to storage from client
+      // Get current user session for correct storage path
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) throw new Error("Not authenticated");
+
       const ext = filename.split('.').pop() || 'webm';
-      const storagePath = `00000000-0000-0000-0000-000000000000/${crypto.randomUUID()}.${ext}`;
+      const storagePath = `${session.user.id}/${crypto.randomUUID()}.${ext}`;
 
       const { error: uploadError } = await supabase.storage
         .from("voice-samples")
@@ -94,8 +97,8 @@ export function VoiceCloneUpload({ onCloneReady, existingCloneId }: VoiceCloneUp
       setState("processing");
 
       // Call edge function with just the storage path (no large file in body)
-      const { data: { session } } = await supabase.auth.getSession();
       const headers: Record<string, string> = { "Content-Type": "application/json" };
+      headers["Authorization"] = `Bearer ${session.access_token}`;
       if (session) {
         headers["Authorization"] = `Bearer ${session.access_token}`;
       }
