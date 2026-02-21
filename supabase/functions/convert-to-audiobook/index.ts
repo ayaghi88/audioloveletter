@@ -48,7 +48,8 @@ async function extractTextFromDocument(fileData: Blob, filename: string): Promis
 
   if (ext === "pdf") {
     const buffer = new Uint8Array(await fileData.arrayBuffer());
-    const { text } = await extractText(buffer);
+    const result = await extractText(buffer);
+    const text = typeof result === "string" ? result : (result?.text ?? String(result ?? ""));
     return text;
   }
 
@@ -139,7 +140,8 @@ Deno.serve(async (req) => {
     if (dlError || !fileData) throw new Error(`Document download failed: ${dlError?.message}`);
 
     // Extract text from document
-    const text = await extractTextFromDocument(fileData, filename || documentPath);
+    const rawText = await extractTextFromDocument(fileData, filename || documentPath);
+    const text = typeof rawText === "string" ? rawText : String(rawText ?? "");
     if (!text.trim()) throw new Error("No text could be extracted from the document");
 
     // Create conversion record
