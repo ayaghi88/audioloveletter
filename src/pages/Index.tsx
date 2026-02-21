@@ -416,6 +416,7 @@ const Index = () => {
               <AudioPlayer
                 title={file?.name.replace(/\.[^/.]+$/, "") ?? "Audiobook"}
                 duration={totalDuration}
+                conversionId={conversionId!}
                 onDownload={handleDownloadAudio}
                 onReset={handleReset}
               />
