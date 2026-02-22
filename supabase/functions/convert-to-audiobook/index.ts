@@ -60,43 +60,63 @@ async function extractTextFromDocument(fileData: Blob, filename: string): Promis
   throw new Error(`Unsupported file type: .${ext}`);
 }
 
+const MAX_CHUNK_CHARS = 4500; // Stay well under ElevenLabs 10K limit
+
+// Split a single text blob into chunks ≤ MAX_CHUNK_CHARS at sentence boundaries
+function splitTextIntoChunks(text: string, baseTitle: string): Array<{ title: string; content: string }> {
+  if (text.length <= MAX_CHUNK_CHARS) {
+    return [{ title: baseTitle, content: text }];
+  }
+  const chunks: Array<{ title: string; content: string }> = [];
+  let remaining = text;
+  let partIdx = 1;
+  while (remaining.length > 0) {
+    if (remaining.length <= MAX_CHUNK_CHARS) {
+      chunks.push({ title: `${baseTitle} (Part ${partIdx})`, content: remaining.trim() });
+      break;
+    }
+    // Find last sentence-ending punctuation within the limit
+    let cutoff = MAX_CHUNK_CHARS;
+    const slice = remaining.slice(0, cutoff);
+    const lastSentenceEnd = Math.max(slice.lastIndexOf(". "), slice.lastIndexOf(".\n"), slice.lastIndexOf("? "), slice.lastIndexOf("! "));
+    if (lastSentenceEnd > MAX_CHUNK_CHARS * 0.3) {
+      cutoff = lastSentenceEnd + 1;
+    }
+    chunks.push({ title: `${baseTitle} (Part ${partIdx})`, content: remaining.slice(0, cutoff).trim() });
+    remaining = remaining.slice(cutoff).trim();
+    partIdx++;
+  }
+  return chunks;
+}
+
 // Simple chapter splitter
 function splitIntoChapters(text: string): Array<{ title: string; content: string }> {
   const chapterPattern = /(?:^|\n)(Chapter\s+\d+[^\n]*|CHAPTER\s+\d+[^\n]*)/gi;
   const matches = [...text.matchAll(chapterPattern)];
 
+  let rawChapters: Array<{ title: string; content: string }> = [];
+
   if (matches.length >= 2) {
-    const chapters: Array<{ title: string; content: string }> = [];
     for (let i = 0; i < matches.length; i++) {
       const start = matches[i].index!;
       const end = i < matches.length - 1 ? matches[i + 1].index! : text.length;
-      chapters.push({
+      rawChapters.push({
         title: matches[i][1].trim(),
         content: text.slice(start, end).trim(),
       });
     }
-    return chapters;
+  } else {
+    // Fallback: treat as single block
+    rawChapters = [{ title: "Full Text", content: text }];
   }
 
-  // Fallback: split into ~2000 char segments
-  const segments: Array<{ title: string; content: string }> = [];
-  const paragraphs = text.split(/\n\s*\n/);
-  let current = "";
-  let idx = 1;
-
-  for (const para of paragraphs) {
-    if (current.length + para.length > 2000 && current.length > 0) {
-      segments.push({ title: `Section ${idx}`, content: current.trim() });
-      current = "";
-      idx++;
-    }
-    current += para + "\n\n";
-  }
-  if (current.trim()) {
-    segments.push({ title: `Section ${idx}`, content: current.trim() });
+  // Sub-split any chapter that exceeds the TTS character limit
+  const finalChapters: Array<{ title: string; content: string }> = [];
+  for (const ch of rawChapters) {
+    finalChapters.push(...splitTextIntoChunks(ch.content, ch.title));
   }
 
-  return segments.length > 0 ? segments : [{ title: "Full Text", content: text }];
+  return finalChapters.length > 0 ? finalChapters : [{ title: "Full Text", content: text }];
 }
 
 Deno.serve(async (req) => {
