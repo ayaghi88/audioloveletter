@@ -12,10 +12,9 @@ const ACCEPTED_TYPES = [
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "text/plain",
-  "application/epub+zip",
 ];
 
-const ACCEPTED_EXTENSIONS = [".pdf", ".docx", ".txt", ".epub"];
+const ACCEPTED_EXTENSIONS = [".pdf", ".docx", ".txt"];
 
 export function DocumentUpload({ onFileSelect, selectedFile, onClear }: DocumentUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -75,8 +74,15 @@ export function DocumentUpload({ onFileSelect, selectedFile, onClear }: Document
                 Drop your document here
               </p>
               <p className="text-sm text-muted-foreground mt-1">
-                or click to browse — PDF, DOCX, TXT, EPUB
+                or click to browse
               </p>
+              <div className="flex flex-wrap justify-center gap-2 mt-3">
+                {["PDF", "DOCX", "TXT"].map((type) => (
+                  <span key={type} className="px-2.5 py-1 rounded-full bg-secondary text-xs font-medium text-muted-foreground border border-border">
+                    .{type.toLowerCase()}
+                  </span>
+                ))}
+              </div>
             </div>
             <input
               id="file-upload"

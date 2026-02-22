@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { unzipSync } from "https://esm.sh/fflate@0.8.2";
-import { extractText } from "npm:unpdf";
+import { getDocument, GlobalWorkerOptions } from "https://esm.sh/pdfjs-dist@4.0.379/build/pdf.mjs";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,8 +45,15 @@ async function extractTextFromDocument(fileData: Blob, filename: string): Promis
   }
   if (ext === "pdf") {
     const buffer = new Uint8Array(await fileData.arrayBuffer());
-    const result = await extractText(buffer);
-    return typeof result === "string" ? result : (result?.text ?? String(result ?? ""));
+    GlobalWorkerOptions.workerSrc = "";
+    const doc = await getDocument({ data: buffer, useWorkerFetch: false, isEvalSupported: false, useSystemFonts: true }).promise;
+    const pages: string[] = [];
+    for (let i = 1; i <= doc.numPages; i++) {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      pages.push(content.items.map((item: any) => item.str).join(" "));
+    }
+    return pages.join("\n\n");
   }
   if (ext === "epub") throw new Error("EPUB files are not yet supported.");
   throw new Error(`Unsupported file type: .${ext}`);
