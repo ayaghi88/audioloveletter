@@ -93,17 +93,7 @@ const Index = () => {
       setProgress(10);
       setStage(STAGES[0]);
 
-      // Simulate initial progress while waiting
-      const fakeProgress = setInterval(() => {
-        setProgress((p) => {
-          if (p >= 20) {
-            clearInterval(fakeProgress);
-            return p;
-          }
-          return p + 1;
-        });
-      }, 500);
-
+      // Kick off conversion (returns immediately)
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/convert-to-audiobook`,
         {
@@ -121,15 +111,45 @@ const Index = () => {
         }
       );
 
-      clearInterval(fakeProgress);
-
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Conversion failed");
 
-      setConversionId(data.id);
-      setConversionResult(data);
-      setProgress(100);
-      setTimeout(() => setState("done"), 500);
+      const cId = data.id;
+      setConversionId(cId);
+
+      // Poll for progress
+      const poll = setInterval(async () => {
+        const { data: conv } = await supabase
+          .from("conversions")
+          .select("status, progress, audio_storage_path, total_duration_seconds, chapters")
+          .eq("id", cId)
+          .single();
+
+        if (!conv) return;
+
+        setProgress(conv.progress);
+
+        if (conv.progress < 30) setStage(STAGES[1]);
+        else if (conv.progress < 70) setStage(STAGES[2]);
+        else if (conv.progress < 90) setStage(STAGES[3]);
+        else setStage(STAGES[4]);
+
+        if (conv.status === "done") {
+          clearInterval(poll);
+          setConversionResult({
+            id: cId,
+            totalDuration: conv.total_duration_seconds,
+            chapters: conv.chapters,
+            audioPath: conv.audio_storage_path,
+          });
+          setProgress(100);
+          setTimeout(() => setState("done"), 500);
+        } else if (conv.status === "failed") {
+          clearInterval(poll);
+          throw new Error("Conversion failed during processing");
+        }
+      }, 3000);
+
     } catch (err: any) {
       toast({
         variant: "destructive",
