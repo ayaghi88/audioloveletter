@@ -24,7 +24,7 @@ const STAGES = [
 const Index = () => {
   const [state, setState] = useState<AppState>("upload");
   const [file, setFile] = useState<File | null>(null);
-  const [voice, setVoice] = useState("george");
+  const [voice, setVoice] = useState("guy");
   const [speed, setSpeed] = useState(1.0);
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState(STAGES[0]);
