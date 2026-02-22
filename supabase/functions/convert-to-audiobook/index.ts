@@ -8,7 +8,16 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Extract plain text from .docx XML content
+// Map voice names to ElevenLabs voice IDs
+const VOICE_MAP: Record<string, string> = {
+  george: "JBFqnCBsd6RMkjVDRZzb",
+  sarah: "EXAVITQu4vr4xnSDxMaL",
+  roger: "CwhRBWXzGAHq8TQ4Fs17",
+  laura: "FGY2WhTYpPnrIDTdsKH5",
+  charlie: "IKne3meq5aSn9XLyUdCD",
+  liam: "TX3LPaxmHKxFdv7VOQHJ",
+};
+
 function extractTextFromDocxXml(xml: string): string {
   const paragraphs: string[] = [];
   const pMatches = xml.match(/<w:p[\s>][\s\S]*?<\/w:p>/g) || [];
@@ -19,9 +28,7 @@ function extractTextFromDocxXml(xml: string): string {
       const content = t.replace(/<[^>]+>/g, "");
       texts.push(content);
     }
-    if (texts.length > 0) {
-      paragraphs.push(texts.join(""));
-    }
+    if (texts.length > 0) paragraphs.push(texts.join(""));
   }
   return paragraphs.join("\n\n");
 }
@@ -88,7 +95,6 @@ function splitIntoChapters(text: string): Array<{ title: string; content: string
   return finalChapters.length > 0 ? finalChapters : [{ title: "Full Text", content: text }];
 }
 
-// Background TTS processing — runs after response is sent
 async function processConversion(
   conversionId: string,
   chapters: Array<{ title: string; content: string }>,
@@ -97,7 +103,6 @@ async function processConversion(
   userId: string,
   apiKey: string,
 ) {
-  // Use service role to bypass RLS for background updates
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -148,13 +153,11 @@ async function processConversion(
       totalDuration += estimatedDuration;
     }
 
-    // Combine audio
     const totalLength = audioChunks.reduce((acc, c) => acc + c.length, 0);
     const combined = new Uint8Array(totalLength);
     let offset = 0;
     for (const chunk of audioChunks) { combined.set(chunk, offset); offset += chunk.length; }
 
-    // Upload
     const audioPath = `${userId}/${conversionId}.mp3`;
     const { error: uploadErr } = await supabase.storage
       .from("audiobooks")
@@ -201,13 +204,11 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) throw new Error("Unauthorized");
 
-    const { documentPath, voiceCloneId, filename, speed } = await req.json();
-    if (!documentPath || !voiceCloneId) throw new Error("Missing documentPath or voiceCloneId");
+    const { documentPath, voice, filename, speed } = await req.json();
+    if (!documentPath) throw new Error("Missing documentPath");
 
-    const { data: voice, error: voiceError } = await supabase
-      .from("voice_clones").select("*").eq("id", voiceCloneId).eq("user_id", user.id).single();
-    if (voiceError || !voice) throw new Error("Voice clone not found");
-    if (!voice.elevenlabs_voice_id) throw new Error("Voice clone not ready");
+    // Resolve voice ID from name or use default
+    const voiceId = VOICE_MAP[voice || "george"] || VOICE_MAP["george"];
 
     // Download & parse document
     const { data: fileData, error: dlError } = await supabase.storage.from("audiobooks").download(documentPath);
@@ -219,12 +220,10 @@ Deno.serve(async (req) => {
 
     const chapters = splitIntoChapters(text);
 
-    // Create conversion record
     const { data: conversion, error: convError } = await supabase
       .from("conversions")
       .insert({
         user_id: user.id,
-        voice_clone_id: voiceCloneId,
         original_filename: filename || "document.txt",
         document_storage_path: documentPath,
         status: "converting",
@@ -235,26 +234,22 @@ Deno.serve(async (req) => {
       .single();
     if (convError) throw new Error(`Failed to create conversion: ${convError.message}`);
 
-    // Fire-and-forget: start background processing (won't block the response)
     const bgPromise = processConversion(
       conversion.id,
       chapters,
-      voice.elevenlabs_voice_id,
+      voiceId,
       speed || 1.0,
       user.id,
       ELEVENLABS_API_KEY,
     );
-    // Keep the edge function alive for the background work using EdgeRuntime.waitUntil if available
-    // @ts-ignore - Deno Deploy / Supabase Edge Runtime may expose this
+    // @ts-ignore
     if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
       // @ts-ignore
       EdgeRuntime.waitUntil(bgPromise);
     } else {
-      // Fallback: just let it run (the edge function process stays alive for the request)
       bgPromise.catch((e) => console.error("Background error:", e));
     }
 
-    // Return immediately with conversion ID so client can poll
     return new Response(JSON.stringify({
       id: conversion.id,
       status: "converting",

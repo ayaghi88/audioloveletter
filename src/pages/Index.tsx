@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Sparkles, BookOpen, Zap, LogOut, FileJson } from "lucide-react";
 import { Header } from "@/components/Header";
 import { DocumentUpload } from "@/components/DocumentUpload";
-import { VoiceCloneUpload } from "@/components/VoiceCloneUpload";
+import { VoiceSettings } from "@/components/VoiceSettings";
 import { ConversionProgress } from "@/components/ConversionProgress";
 import { AudioPlayer } from "@/components/AudioPlayer";
 import { AuthForm } from "@/components/AuthForm";
@@ -16,7 +16,7 @@ type AppState = "auth" | "upload" | "settings" | "converting" | "done";
 const STAGES = [
   "Parsing document...",
   "Splitting into chapters...",
-  "Generating narration with your voice...",
+  "Generating narration...",
   "Encoding audio...",
   "Finalizing KDP format...",
 ];
@@ -24,7 +24,7 @@ const STAGES = [
 const Index = () => {
   const [state, setState] = useState<AppState>("upload");
   const [file, setFile] = useState<File | null>(null);
-  const [voiceCloneId, setVoiceCloneId] = useState<string | null>(null);
+  const [voice, setVoice] = useState("george");
   const [speed, setSpeed] = useState(1.0);
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState(STAGES[0]);
@@ -35,32 +35,15 @@ const Index = () => {
   // Check auth on mount
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setState("upload");
-        loadExistingVoice();
-      } else {
-        setState("auth");
-      }
+      if (!session) setState("auth");
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        loadExistingVoice();
-      }
+      if (session && state === "auth") setState("upload");
     });
 
     return () => subscription.unsubscribe();
   }, []);
-
-  const loadExistingVoice = async () => {
-    const { data } = await supabase
-      .from("voice_clones")
-      .select("id")
-      .eq("status", "ready")
-      .order("created_at", { ascending: false })
-      .limit(1);
-    if (data?.[0]) setVoiceCloneId(data[0].id);
-  };
 
   const handleFileSelect = useCallback((f: File) => {
     setFile(f);
@@ -73,7 +56,7 @@ const Index = () => {
   }, []);
 
   const handleConvert = useCallback(async () => {
-    if (!file || !voiceCloneId) return;
+    if (!file) return;
 
     setState("converting");
     setProgress(5);
@@ -93,7 +76,6 @@ const Index = () => {
       setProgress(10);
       setStage(STAGES[0]);
 
-      // Kick off conversion (returns immediately)
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/convert-to-audiobook`,
         {
@@ -104,7 +86,7 @@ const Index = () => {
           },
           body: JSON.stringify({
             documentPath: docPath,
-            voiceCloneId,
+            voice,
             filename: file.name,
             speed,
           }),
@@ -158,7 +140,7 @@ const Index = () => {
       });
       setState("settings");
     }
-  }, [file, voiceCloneId, speed, toast]);
+  }, [file, voice, speed, toast]);
 
   const handleDownloadAudio = useCallback(async () => {
     if (!conversionId) return;
@@ -188,7 +170,9 @@ const Index = () => {
       const a = document.createElement("a");
       a.href = url;
       a.download = `${file?.name?.replace(/\.[^/.]+$/, "") || "audiobook"}.mp3`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err: any) {
       toast({ variant: "destructive", title: "Download failed", description: err.message });
@@ -222,7 +206,9 @@ const Index = () => {
       const a = document.createElement("a");
       a.href = url;
       a.download = `${file?.name?.replace(/\.[^/.]+$/, "") || "audiobook"}-kdp-metadata.json`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err: any) {
       toast({ variant: "destructive", title: "Export failed", description: err.message });
@@ -281,7 +267,7 @@ const Index = () => {
               >
                 Turn any document into a{" "}
                 <span className="text-gradient-amber">KDP-ready audiobook</span>
-                {" "}in <span className="text-gradient-amber">your voice</span>
+                {" "}with <span className="text-gradient-amber">AI narration</span>
               </motion.h1>
               <motion.p
                 initial={{ opacity: 0, y: 20 }}
@@ -289,7 +275,7 @@ const Index = () => {
                 transition={{ delay: 0.2 }}
                 className="mt-4 text-lg text-muted-foreground max-w-lg"
               >
-                Upload your manuscript, record yourself for 2 minutes, and get a publish-ready audiobook narrated in your own voice.
+                Upload your manuscript, pick an AI voice, and get a publish-ready audiobook in minutes.
               </motion.p>
 
               <motion.div
@@ -301,7 +287,7 @@ const Index = () => {
                 {[
                   { icon: Zap, label: "One-click convert" },
                   { icon: BookOpen, label: "KDP-ready format" },
-                  { icon: Sparkles, label: "Your voice, cloned" },
+                  { icon: Sparkles, label: "AI narration" },
                 ].map(({ icon: Icon, label }) => (
                   <span
                     key={label}
@@ -327,7 +313,7 @@ const Index = () => {
               className="mt-10 mb-6"
             >
               <h2 className="text-2xl font-bold text-foreground">Configure your audiobook</h2>
-              <p className="text-muted-foreground mt-1">Clone your voice and set your speed, then convert.</p>
+              <p className="text-muted-foreground mt-1">Pick a voice, set your speed, then convert.</p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -375,39 +361,20 @@ const Index = () => {
                 selectedFile={file}
                 onClear={handleClearFile}
               />
-              <VoiceCloneUpload
-                onCloneReady={setVoiceCloneId}
-                existingCloneId={voiceCloneId}
+              <VoiceSettings
+                voice={voice}
+                speed={speed}
+                onVoiceChange={setVoice}
+                onSpeedChange={setSpeed}
               />
-
-              {/* Speed selector */}
-              <div>
-                <span className="text-sm font-medium text-foreground mb-3 block">Narration Speed</span>
-                <div className="flex gap-2">
-                  {[0.8, 0.9, 1.0, 1.1, 1.2].map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => setSpeed(s)}
-                      className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all duration-200 border ${
-                        speed === s
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border bg-secondary text-muted-foreground hover:text-foreground hover:border-primary/30"
-                      }`}
-                    >
-                      {s}×
-                    </button>
-                  ))}
-                </div>
-              </div>
 
               <Button
                 variant="hero"
                 size="lg"
                 className="w-full text-base"
                 onClick={handleConvert}
-                disabled={!voiceCloneId}
               >
-                {!voiceCloneId ? "Clone your voice first" : "Convert to Audiobook"}
+                Convert to Audiobook
                 <ArrowRight className="w-4 h-4" />
               </Button>
             </motion.div>
