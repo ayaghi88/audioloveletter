@@ -1,5 +1,4 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { UniversalEdgeTTS } from "jsr:@edge-tts/universal@1.3.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,12 +7,12 @@ const corsHeaders = {
 };
 
 const VOICE_MAP: Record<string, string> = {
-  guy: "en-US-GuyNeural",
-  jenny: "en-US-JennyNeural",
-  aria: "en-US-AriaNeural",
-  davis: "en-US-DavisNeural",
-  jane: "en-US-JaneNeural",
-  ryan: "en-GB-RyanNeural",
+  george: "JBFqnCBsd6RMkjVDRZzb",
+  sarah: "EXAVITQu4vr4xnSDxMaL",
+  roger: "CwhRBWXzGAHq8TQ4Fs17",
+  laura: "FGY2WhTYpPnrIDTdsKH5",
+  charlie: "IKne3meq5aSn9XLyUdCD",
+  liam: "TX3LPaxmHKxFdv7VOQHJ",
 };
 
 const PREVIEW_TEXT =
@@ -25,6 +24,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
+    if (!ELEVENLABS_API_KEY) throw new Error("ELEVENLABS_API_KEY not configured");
+
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("Missing authorization header");
 
@@ -43,10 +45,27 @@ Deno.serve(async (req) => {
     const voiceId = VOICE_MAP[voice];
     if (!voiceId) throw new Error(`Unknown voice: ${voice}`);
 
-    const tts = new UniversalEdgeTTS(PREVIEW_TEXT, voiceId);
-    const result = await tts.synthesize();
+    const ttsResponse = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
+      {
+        method: "POST",
+        headers: { "xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: PREVIEW_TEXT,
+          model_id: "eleven_multilingual_v2",
+          voice_settings: { stability: 0.6, similarity_boost: 0.8, style: 0.3, use_speaker_boost: true },
+        }),
+      }
+    );
 
-    return new Response(result.audio, {
+    if (!ttsResponse.ok) {
+      const errText = await ttsResponse.text();
+      throw new Error(`TTS preview failed: ${errText}`);
+    }
+
+    const audioBuffer = await ttsResponse.arrayBuffer();
+
+    return new Response(audioBuffer, {
       headers: {
         ...corsHeaders,
         "Content-Type": "audio/mpeg",

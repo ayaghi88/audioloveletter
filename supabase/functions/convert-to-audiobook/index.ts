@@ -1,7 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { unzipSync } from "https://esm.sh/fflate@0.8.2";
 import { getDocument, GlobalWorkerOptions } from "https://esm.sh/pdfjs-dist@4.0.379/build/pdf.mjs";
-import { UniversalEdgeTTS } from "jsr:@edge-tts/universal@1.3.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,14 +8,14 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Map voice names to Microsoft Edge TTS voice IDs
+// Map voice names to ElevenLabs voice IDs
 const VOICE_MAP: Record<string, string> = {
-  guy: "en-US-GuyNeural",
-  jenny: "en-US-JennyNeural",
-  aria: "en-US-AriaNeural",
-  davis: "en-US-DavisNeural",
-  jane: "en-US-JaneNeural",
-  ryan: "en-GB-RyanNeural",
+  george: "JBFqnCBsd6RMkjVDRZzb",
+  sarah: "EXAVITQu4vr4xnSDxMaL",
+  roger: "CwhRBWXzGAHq8TQ4Fs17",
+  laura: "FGY2WhTYpPnrIDTdsKH5",
+  charlie: "IKne3meq5aSn9XLyUdCD",
+  liam: "TX3LPaxmHKxFdv7VOQHJ",
 };
 
 function extractTextFromDocxXml(xml: string): string {
@@ -103,18 +102,13 @@ function splitIntoChapters(text: string): Array<{ title: string; content: string
   return finalChapters.length > 0 ? finalChapters : [{ title: "Full Text", content: text }];
 }
 
-async function synthesizeChunk(text: string, voiceId: string): Promise<Uint8Array> {
-  const tts = new UniversalEdgeTTS(text, voiceId);
-  const result = await tts.synthesize();
-  return new Uint8Array(result.audio);
-}
-
 async function processConversion(
   conversionId: string,
   chapters: Array<{ title: string; content: string }>,
   voiceId: string,
-  _speed: number,
+  speed: number,
   userId: string,
+  apiKey: string,
 ) {
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -131,10 +125,37 @@ async function processConversion(
       const progress = 20 + Math.round(((i + 1) / chapters.length) * 70);
       await supabase.from("conversions").update({ progress, status: "converting" }).eq("id", conversionId);
 
-      const audioData = await synthesizeChunk(chapter.content, voiceId);
-      audioChunks.push(audioData);
-      // Estimate duration from MP3 byte size (~16KB/s at 128kbps)
-      const estimatedDuration = audioData.byteLength / 16000;
+      const previousText = i > 0 ? chapters[i - 1].content.slice(-200) : undefined;
+      const nextText = i < chapters.length - 1 ? chapters[i + 1].content.slice(0, 200) : undefined;
+
+      const ttsBody: Record<string, unknown> = {
+        text: chapter.content,
+        model_id: "eleven_multilingual_v2",
+        voice_settings: { stability: 0.6, similarity_boost: 0.8, style: 0.3, use_speaker_boost: true },
+      };
+      if (speed && speed !== 1.0) ttsBody.speed = speed;
+      if (previousText) ttsBody.previous_text = previousText;
+      if (nextText) ttsBody.next_text = nextText;
+
+      const ttsResponse = await fetch(
+        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
+        {
+          method: "POST",
+          headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify(ttsBody),
+        }
+      );
+
+      if (!ttsResponse.ok) {
+        const errText = await ttsResponse.text();
+        console.error(`TTS failed for chunk ${i + 1}: ${errText}`);
+        await supabase.from("conversions").update({ status: "failed" }).eq("id", conversionId);
+        return;
+      }
+
+      const audioBuffer = await ttsResponse.arrayBuffer();
+      audioChunks.push(new Uint8Array(audioBuffer));
+      const estimatedDuration = audioBuffer.byteLength / 16000;
       chapterMeta.push({ title: chapter.title, startSeconds: totalDuration, durationSeconds: estimatedDuration });
       totalDuration += estimatedDuration;
     }
@@ -175,6 +196,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
+    if (!ELEVENLABS_API_KEY) throw new Error("ELEVENLABS_API_KEY not configured");
+
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("Missing authorization header");
 
@@ -191,7 +215,7 @@ Deno.serve(async (req) => {
     if (!documentPath) throw new Error("Missing documentPath");
 
     // Resolve voice ID from name or use default
-    const voiceId = VOICE_MAP[voice || "guy"] || VOICE_MAP["guy"];
+    const voiceId = VOICE_MAP[voice || "george"] || VOICE_MAP["george"];
 
     // Download & parse document
     const { data: fileData, error: dlError } = await supabase.storage.from("audiobooks").download(documentPath);
@@ -223,6 +247,7 @@ Deno.serve(async (req) => {
       voiceId,
       speed || 1.0,
       user.id,
+      ELEVENLABS_API_KEY,
     );
     // @ts-ignore
     if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
