@@ -128,7 +128,12 @@ const Index = () => {
           setTimeout(() => setState("done"), 500);
         } else if (conv.status === "failed") {
           clearInterval(poll);
-          throw new Error("Conversion failed during processing");
+          toast({
+            variant: "destructive",
+            title: "Conversion failed",
+            description: "Conversion failed during processing. Please try again.",
+          });
+          setState("settings");
         }
       }, 3000);
 
