@@ -2,7 +2,7 @@
 
 ## Project info
 
-**URL**: https://lovable.dev/projects/audioloveletter.lovable.app
+**URL**: https://audioloveletter.lovable.app
 
 ## How can I edit this code?
 
@@ -10,7 +10,7 @@ There are several ways of editing your application.
 
 **Use Lovable**
 
-Simply visit the [Lovable Project](https://www.audioloveletter.lovable.app) and start prompting.
+Simply visit the [Lovable Project](https://audioloveletter.lovable.app) and start prompting.
 
 Changes made via Lovable will be committed automatically to this repo.
 
