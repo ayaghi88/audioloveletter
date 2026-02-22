@@ -1,5 +1,8 @@
+import { useState, useRef } from "react";
 import { motion } from "framer-motion";
-import { Mic, Volume2, Gauge } from "lucide-react";
+import { Mic, Gauge, Play, Square, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface VoiceSettingsProps {
   voice: string;
@@ -26,6 +29,80 @@ const SPEEDS = [
 ];
 
 export function VoiceSettings({ voice, speed, onVoiceChange, onSpeedChange }: VoiceSettingsProps) {
+  const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
+  const [playingVoice, setPlayingVoice] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const { toast } = useToast();
+
+  const handlePreview = async (voiceId: string) => {
+    // Stop any currently playing preview
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    if (playingVoice === voiceId) {
+      setPlayingVoice(null);
+      return;
+    }
+
+    setPreviewingVoice(voiceId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast({ variant: "destructive", title: "Not signed in", description: "Please sign in to preview voices." });
+        return;
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/preview-voice`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ voice: voiceId }),
+        }
+      );
+
+      if (!response.ok) {
+        let errMsg = "Preview unavailable";
+        try {
+          const errData = await response.json();
+          errMsg = errData.error || errMsg;
+        } catch {
+          // ignore parse errors
+        }
+        toast({ variant: "destructive", title: "Preview failed", description: errMsg });
+        return;
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      setPlayingVoice(voiceId);
+
+      audio.onended = () => {
+        setPlayingVoice(null);
+        URL.revokeObjectURL(url);
+        audioRef.current = null;
+      };
+
+      audio.play().catch(() => {
+        toast({ variant: "destructive", title: "Playback blocked", description: "Your browser blocked audio autoplay. Please interact with the page first." });
+        setPlayingVoice(null);
+        URL.revokeObjectURL(url);
+        audioRef.current = null;
+      });
+    } catch {
+      toast({ variant: "destructive", title: "Preview failed", description: "Unable to load voice preview. Please try again." });
+    } finally {
+      setPreviewingVoice(null);
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -41,11 +118,14 @@ export function VoiceSettings({ voice, speed, onVoiceChange, onSpeedChange }: Vo
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {VOICES.map((v) => (
-            <button
+            <div
               key={v.id}
+              role="button"
+              tabIndex={0}
               onClick={() => onVoiceChange(v.id)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onVoiceChange(v.id); } }}
               className={`
-                p-3 rounded-xl text-left transition-all duration-200 border
+                p-3 rounded-xl text-left transition-all duration-200 border cursor-pointer
                 ${voice === v.id
                   ? "border-primary bg-primary/10 glow-amber"
                   : "border-border bg-secondary hover:border-primary/30"
@@ -56,7 +136,22 @@ export function VoiceSettings({ voice, speed, onVoiceChange, onSpeedChange }: Vo
                 {v.name}
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">{v.desc}</p>
-            </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handlePreview(v.id); }}
+                className="mt-2 flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+                aria-label={playingVoice === v.id ? `Stop preview of ${v.name}` : `Preview ${v.name} voice`}
+              >
+                {previewingVoice === v.id ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : playingVoice === v.id ? (
+                  <Square className="w-3 h-3" />
+                ) : (
+                  <Play className="w-3 h-3" />
+                )}
+                {previewingVoice === v.id ? "Loading…" : playingVoice === v.id ? "Stop" : "Preview"}
+              </button>
+            </div>
           ))}
         </div>
       </div>
