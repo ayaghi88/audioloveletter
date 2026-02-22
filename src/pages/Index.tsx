@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Sparkles, BookOpen, Zap, LogOut, FileJson } from "lucide-react";
 import { Header } from "@/components/Header";
@@ -30,7 +30,18 @@ const Index = () => {
   const [stage, setStage] = useState(STAGES[0]);
   const [conversionId, setConversionId] = useState<string | null>(null);
   const [conversionResult, setConversionResult] = useState<any>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { toast } = useToast();
+
+  // Clean up any active polling interval on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current !== null) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, []);
 
   // Check auth on mount
   useEffect(() => {
@@ -99,15 +110,47 @@ const Index = () => {
       const cId = data.id;
       setConversionId(cId);
 
-      // Poll for progress
-      const poll = setInterval(async () => {
-        const { data: conv } = await supabase
+      // Poll for progress (max ~5 minutes at 3000ms intervals)
+      const MAX_POLLS = 100;
+      let pollCount = 0;
+      let consecutiveErrors = 0;
+      const MAX_CONSECUTIVE_ERRORS = 5;
+
+      pollRef.current = setInterval(async () => {
+        pollCount++;
+        if (pollCount > MAX_POLLS) {
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+          toast({
+            variant: "destructive",
+            title: "Conversion timed out",
+            description: "The conversion is taking too long. Please try again.",
+          });
+          setState("settings");
+          return;
+        }
+
+        const { data: conv, error: pollError } = await supabase
           .from("conversions")
           .select("status, progress, audio_storage_path, total_duration_seconds, chapters")
           .eq("id", cId)
           .single();
 
-        if (!conv) return;
+        if (pollError || !conv) {
+          consecutiveErrors++;
+          if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+            clearInterval(pollRef.current!);
+            pollRef.current = null;
+            toast({
+              variant: "destructive",
+              title: "Connection error",
+              description: "Lost connection while checking conversion status. Please try again.",
+            });
+            setState("settings");
+          }
+          return;
+        }
+        consecutiveErrors = 0;
 
         setProgress(conv.progress);
 
@@ -117,7 +160,8 @@ const Index = () => {
         else setStage(STAGES[4]);
 
         if (conv.status === "done") {
-          clearInterval(poll);
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
           setConversionResult({
             id: cId,
             totalDuration: conv.total_duration_seconds,
@@ -127,7 +171,8 @@ const Index = () => {
           setProgress(100);
           setTimeout(() => setState("done"), 500);
         } else if (conv.status === "failed") {
-          clearInterval(poll);
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
           toast({
             variant: "destructive",
             title: "Conversion failed",
