@@ -9,12 +9,12 @@ interface VoiceSettingsProps {
 }
 
 const VOICES = [
-  { id: "sarah", name: "Sarah", desc: "Warm, conversational" },
   { id: "george", name: "George", desc: "Deep, authoritative" },
-  { id: "lily", name: "Lily", desc: "Gentle, soothing" },
-  { id: "brian", name: "Brian", desc: "Clear, professional" },
-  { id: "alice", name: "Alice", desc: "Bright, engaging" },
-  { id: "daniel", name: "Daniel", desc: "Rich, narrative" },
+  { id: "sarah", name: "Sarah", desc: "Warm, conversational" },
+  { id: "roger", name: "Roger", desc: "Rich, narrative" },
+  { id: "laura", name: "Laura", desc: "Gentle, soothing" },
+  { id: "charlie", name: "Charlie", desc: "Bright, engaging" },
+  { id: "liam", name: "Liam", desc: "Clear, professional" },
 ];
 
 const SPEEDS = [
